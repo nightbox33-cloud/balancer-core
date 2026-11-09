@@ -1,36 +1,84 @@
-# Los 7 pools vulnerables: qué son, por qué lo son y cómo se explota cada uno
+# Candidatos vulnerables (los antiguos «7»)
 
-Este documento explica, uno por uno, los 7 pools de la lista que **hoy son rentables de atacar** con
-aritmética exacta (`verify_triage.py`: P&L > $100). Total: **$42.044 de botín** con **$17.468 de
-capital** comprometido.
+> **Este documento se llamaba «los 7 pools vulnerables».** Tras la revisión crítica
+> (`security/REVISION-ANEXO-ES.md`) **cuatro de los siete eran falsos positivos** y se han retirado: tres
+> por estar valorados con **precio de marca (spot) en vez de precio realizable**, y uno por valorar a
+> libro un LP que no tiene salida. Quedan **tres candidatos**, ninguno verificado en fork.
+> Los descartados, con la prueba de por qué caen, están en **§0bis** (no se borran: se reclasifican).
 
-Reproducir: `python3 security/dossier7.py` (datos en `security/data/dossier7.csv`).
+De los tres, **$30.676 de botín** con **$1.765 de capital** sobre **$40.589 de TVL**, todos con aritmética
+exacta (`verify_triage.py`: P&L > $100).
+
+Reproducir: `python3 security/dossier7.py` (el script calcula los **siete originales**, incluidos los
+cuatro descartados; datos en `security/data/dossier7.csv`).
 
 ---
 
 ## 0. Resumen
 
-| # | pool | versión | tipo | tokens (pesos) | fee | TVL | pata en polvo (ρ) | capital | botín | ROI | causa |
-|---|---|---|---|---|---:|---:|---|---:|---:|---:|---|
-| 1 | `0x1373e57f` | v1 | BPool 8 tokens | 0x0ba45a8b + 7 patas iguales (12,5 %) | 1,00 % | $29.298 | USDC (ρ≈0) | **$9** | **$29.026** | 3.225× | patas muertas |
-| 2 | `0xf0f8b1ce` | v1 | BPool | MIMO / PAR (50/50) | 0,15 % | $17.435 | PAR (ρ=0,285) | $10.108 | $5.188 | 0,51× | par desarbitrado |
-| 3 | `0x5b1c06c4` | v2 | WeightedPool v1 | PAR / MIMO (75/25) | 0,15 % | $9.059 | PAR (ρ=0,445) | $1.894 | $2.732 | 1,44× | par desarbitrado |
-| 4 | `0x30cb8593` | v1 | BPool | UNI-V2 / WETH (50/50) | 3,75 % | $3.883 | WETH (ρ=0,043) | $3.128 | $2.720 | 0,87× | desequilibrio puro |
-| 5 | `0xc3516482` | v1 | BPool | WETH / REPv2 (20/80) | 0,30 % | $10.056 | WETH (ρ=0,313) | $1.497 | $993 | 0,66× | peso extremo |
-| 6 | `0xa5533a44` | v2 | WeightedPool v1 | PAR / MIMO (20/80) | 0,15 % | $4.507 | PAR (ρ=0,200) | $573 | $727 | 1,27× | par desarbitrado |
-| 7 | `0xcf8dfdb7` | v2 | WeightedPool v4 | st-yETH / GOLD (40/60) | 1,00 % | $1.235 | GOLD (ρ=0,160) | $259 | $657 | 2,54× | desequilibrio puro |
-| | | | | | | **$75.474** | | **$17.468** | **$42.045** | | |
+| # | pool | ver. | tipo | tokens (pesos) | fee | TVL | pata en polvo (ρ) | capital | botín | ROI | causa | estado |
+|---|---|---|---|---:|---:|---|---:|---:|---:|---:|---|---|
+| 1 | `0x1373e57f` | v1 | BPool 8 tokens | `0x0ba45a8b` + 7 patas muertas (12,5 % c/u) | 1,00 % | $29.298 | USDC (ρ≈0) | **$9** | **$29.026** | 3.225× | patas muertas | **pendiente**: salida de `0x0ba45a8b` |
+| 2 | `0xc3516482` | v1 | BPool | WETH / REPv2 (20/80) | 0,30 % | $10.056 | WETH (ρ=0,313) | $1.497 | $993 | 0,66× | peso extremo | **condicional**: probar salida por REPv2 |
+| 3 | `0xcf8dfdb7` | v2 | WeightedPool v4 | st-yETH / GOLD (40/60) | 1,00 % | $1.235 | GOLD (ρ=0,160) | $259 | $657 | 2,54× | desequilibrio puro | **condicional**: verificar ambos precios |
+| | | | | | | **$40.589** | | **$1.765** | **$30.676** | | | |
 
-«ROI» = botín / capital. Para el #2 y el #4 el ROI es menor que 1: hace falta poner más de lo que se
-saca, pero el capital **se recupera** (entra y vuelve a salir); lo que cuenta es el P&L neto.
+**«Estado» no es una formalidad: es lo que falta por medir.** Ninguno de los tres está confirmado
+ejecutando. El #1 es el que más cambia según lo que se mida (puede pasar de $29.026 a ~$0), y el #3 es
+el más barato de verificar (token comprable, pool de $1,2k).
+
+«ROI» = botín / capital. En el #2 es menor que 1: hace falta poner más de lo que se saca, pero el
+capital **se recupera** (entra y vuelve a salir); lo que cuenta es el P&L neto.
 
 ---
 
-## 1. El bug: qué tienen en común los 7
+## 0bis. Descartados: cuatro falsos positivos
+
+| # orig. | pool | por qué se cae | prueba |
+|---|---|---|---|
+| 2 | `0xf0f8b1ce` | PAR/MIMO 50/50. El ρ=0,285 es **artefacto de marca**: MIMO no vale su spot | con MIMO a **spot/6**, ρ_PAR = **0,999** |
+| 3 | `0x5b1c06c4` | PAR/MIMO 75/25 (v2), mismo caso | con MIMO a **spot/6**, ρ_PAR = **1,000** |
+| 6 | `0xa5533a44` | PAR/MIMO 20/80 (v2), mismo caso | con MIMO a **spot/6**, ρ_PAR = **1,000** |
+| 4 | `0x30cb8593` | UNI-V2/WETH. Se valoraba el LP de Uni-V2 **a libro** | el LP es black-hole: `burn` revierte; techo real = $83 de WETH |
+
+### El caso de los tres PAR/MIMO
+
+El pool valora PAR a **$6,695** cuando el mercado dice **$1,114**: un **6,01×**. Eso no es un bug del
+pool. Es la misma cifra que el *haircut* de liquidación de MIMO que se midió en fork (MIMO se realiza a
+~1/6 de su spot). Y el factor que hace desaparecer el desequilibrio es exactamente ése:
+
+```
+MIMO a spot/1:  rho_PAR = 0,285   rho_MIMO = 1,715
+MIMO a spot/2:  rho_PAR = 0,500   rho_MIMO = 1,500
+MIMO a spot/4:  rho_PAR = 0,799   rho_MIMO = 1,201
+MIMO a spot/6:  rho_PAR = 0,999   rho_MIMO = 1,001   <-- el haircut medido
+```
+
+No es casualidad: **ρ = 1 es, por definición, «el precio marginal del pool coincide con la marca».** El
+pool no estaba desequilibrado; estaba diciendo la verdad sobre MIMO y la marca era la que mentía. Un
+pool que cotiza al precio ejecutable **no tiene arbitraje**, por muy «desequilibrado» que lo vea un
+scanner que usa spot.
+
+### El caso `0x30cb8593`
+
+El botín de $2.720 venía de valorar 3.799,90 $ de UNI-V2 **a valor contable** y suponer que se podía
+vender. El `burn` del LP revierte en fork: no hay salida. El pool entero tiene **$83,55 de WETH** y eso
+es todo lo que se puede sacar, con un fee del 3,75 %. El «desequilibrio puro» era real; la **cobrabilidad
+no**.
+
+### Qué queda de la «familia PAR/MIMO»
+
+Nada. Los tres pools del par eran el mismo artefacto con los pesos barajados (50/50, 75/25, 20/80) y el
+único token del par que se podía vender era PAR, que es justo la pata por la que se entra. La «causa»
+*par desarbitrado* desaparece del documento: no era una causa, era una marca mala.
+
+---
+
+## 1. El bug: qué tienen en común los tres
 
 ### 1.1 La operación que se explota
 
-Los siete exponen la misma ruta: **entrar con un solo token pidiendo una cantidad exacta de BPT** y
+Los tres exponen la misma ruta: **entrar con un solo token pidiendo una cantidad exacta de BPT** y
 **salir quemando BPT contra un solo token**. En v1 es `joinswapPoolAmountOut` → `calcSingleInGivenPoolOut`
 (`contracts/BMath.sol:156`); en v2 es `JoinKind.TOKEN_IN_FOR_EXACT_BPT_OUT` → `WeightedMath.sol:274`.
 
@@ -63,7 +111,7 @@ desequilibrio, el precio marginal que cobra el pool por la pata escasa **es meno
 por BPT, y el BPT acuñado es un derecho **pro-rata sobre el valor medio**. La diferencia se cobra en
 la salida.
 
-### 1.3 La métrica: ρ
+### 1.3 La métrica: ρ, y la trampa de la marca
 
 ```
 ρ_i = v_i / (w_i · TVL)        v_i = valor de la pata i, w_i = su peso
@@ -75,7 +123,10 @@ la salida.
   entrar**. Cuanto menor, más caro le sale al pool reponerla y más barato te vende el BPT.
 - `ρ_i > 1` ⇒ es la pata por la que hay que **salir**.
 
-En los 7, la pata en polvo tiene ρ ≤ 0,445. En el #4, ρ = 0,043.
+**Pero ρ sólo vale lo que valga `v_i`.** Si se usan precios de marca, ρ mide la desviación del pool
+respecto al spot — y eso **sólo es dinero si puedes ejecutar al spot**. Ése fue el error que metió los
+cuatro falsos positivos de §0bis y el que hace que la tabla de §0 lleve columna de estado. El criterio
+correcto está en §4.
 
 ### 1.4 La secuencia, en tres pasos
 
@@ -96,14 +147,14 @@ En los 7, la pata en polvo tiene ρ ≤ 0,445. En el #4, ρ = 0,043.
 | Redondeo | half-up en todo | up en entrada, down en salida |
 | ¿Frena el ataque? | No: sólo obliga a iterar | **Menos aún**: el tope es sobre una magnitud que el atacante controla pagando |
 
-En v2 el único control añadido respecto a v1 es el ratio de invariante, y ese limita *cuánto BPT se
-acuña por llamada*, no *cuánto desequilibrio se crea*. El atacante usa fracciones pequeñas (20 %, 10 %)
-y repite. Por eso v2 no tiene umbral ρ\*: **todo pool con ρ < 1 es rentable**, y el corte práctico lo
-pone el gas.
+**No hay «doble cap» en v1**: `exitswapPoolAmountIn` sólo aplica `MAX_OUT_RATIO` sobre el balance
+(`BPool.sol:642`, `BConst.sol:40`). La condición «BPT/supply ≤ 1/3» **no existe en v1** — es de v2
+(`_MAX_INVARIANT_RATIO`), y allí actúa sobre el *supply*, no sobre el desequilibrio. En v2, por tanto,
+no hay umbral ρ\*: **todo pool con ρ < 1 es rentable**, y el corte práctico lo pone el gas.
 
 ---
 
-## 2. Los 7, uno por uno
+## 2. Los tres, uno por uno
 
 ### 2.1 `0x1373e57f764a7944bdd7a4bd5ca3007d496934da` — siete patas muertas
 
@@ -128,93 +179,29 @@ en ρ ≈ 0: por cualquiera de ellas se entra prácticamente gratis.
 
 **Cómo se explota.** 21 llamadas a `joinswapPoolAmountOut` metiendo USDC, empezando por
 **0,000903 USDC** (sí, un décimo de céntimo), que acuñan 5.384 BPT. Capital total: **$9**. Con el
-65,24 % del supply se quema en `exitswapPoolAmountIn` contra la pata viva y se cobran
-**$29.035,43**. P&L **+$29.026**.
+65,24 % del supply se quema en `exitswapPoolAmountIn` contra la pata viva y se cobran **$29.035,43**.
+P&L **+$29.026**.
 
-**Por qué el contrato lo permite.** Con `w = 0,125` el exponente es `1/w = 8`. Acuñar el 65 % del
-supply cuesta `b·(1,65^8 − 1) = b·54,3`, donde `b` es el balance de la pata de entrada: **$0,0018 de
-USDC**. El pool te cobra por «reponer el USDC que falta», no por el `0x0ba45a8b` que te llevas.
-`MIN_BALANCE = 1e6` wei no protege: el balance no es cero, es pequeño **en valor**.
+**La salida tiene que ser mono, no pro-rata.** Con `w = 0,125` el exponente es `1/w = 8`, y
+`1 − (1 − 0,6524)^8 = 0,99979`: quemando el 65 % del supply te llevas **el 99,98 % de la pata**. Eso es
+lo que hace el ataque tan desproporcionado. `exitPool` daría el 65 % de cada pata y además es frágil:
+revierte con `ERR_MATH_APPROX` en cuanto cualquier pata da cero (`BPool.sol:413`).
 
----
+**Por qué el contrato lo permite.** Acuñar el 65 % del supply cuesta `b·(1,65^8 − 1) = b·54,3`, donde
+`b` es el balance de la pata de entrada: **$0,0018 de USDC**. El pool te cobra por «reponer el USDC que
+falta», no por el `0x0ba45a8b` que te llevas. `MIN_BALANCE = 1e6` wei no protege: el balance no es
+cero, es pequeño **en valor**.
 
-### 2.2 `0xf0f8b1ce9d95dfbe82f8310d48dcae71d79f9519` — el pool del PoC (PAR/MIMO)
-
-**Qué es.** BPool de **2 tokens al 50 %, MIMO/PAR**, fee 0,15 %, TVL $17.435,36, supply 25.102,79 BPT.
-Es exactamente el pool del PoC original. MIMO es el token de incentivos (mStable) y PAR el token de
-precio objetivo.
-
-**Por qué es vulnerable.**
-
-| pata | balance | precio | valor | ρ |
-|---|---:|---:|---:|---:|
-| MIMO | 5.350.088,4 | $0,0027938 | $14.947,24 | **1,715** |
-| PAR | 2.232,595 | $1,11445 | $2.488,12 | **0,285** |
-
-PAR pesa la mitad del pool y aporta el **14,3 %** del valor. Nadie lo arbitró: para cerrar el hueco
-habría que vender MIMO contra el pool, y el MIMO farmeado no tiene demanda.
-
-**Cómo se explota.** 4 joins de 50 % del balance de PAR: 1.116 + 1.674 + 2.512 + 3.768 =
-**9.070 PAR ($10.108)**. Con el 55,53 % del supply, `exitPool` (pro-rata) devuelve
-6.263 PAR ($6.994) + ~2,97 M MIMO ($8.298). El PAR vuelve a medias; **el MIMO es gratis**.
-P&L **+$5.188**.
-
-**Por qué el contrato lo permite.** El join cobra PAR al precio marginal de la curva cuando PAR está
-escaso (caro reponerlo… pero el que paga eres tú con PAR, que el pool valora por encima de su precio
-de mercado al ponderarlo al 50 %). El BPT acuñado se redime al valor **medio**, donde el MIMO pesa
-mucho más. La diferencia entre esas dos valoraciones es el botín.
+> ⚠️ **Lo que falta por verificar (y es todo).** El 100 % del TVL es la pata `0x0ba45a8b` a $55,134 el
+> token. Si ese token no tiene salida —o su precio realizable es una fracción de eso— el botín no es
+> $29.026, es lo que se saque por 531 unidades. El **mecanismo** no depende del precio (la fracción
+> drenada es exacta: 65,24 % del supply → 99,98 % de la pata); el **importe**, sí. Antes de contar este
+> pool, mirar los pares de `0x0ba45a8b`, su profundidad y el slippage de venta de 531 tokens en una
+> sola operación. Es el mismo test que tumbó los tres PAR/MIMO.
 
 ---
 
-### 2.3 `0x5b1c06c4923dbba4b27cfa270ffb2e60aa286159` — el mismo par, pesos invertidos (v2)
-
-**Qué es.** **WeightedPool v2** (factoría v1, `codesize` 19.384), **PAR 75 % / MIMO 25 %**, fee 0,15 %,
-TVL $9.059,40, supply 26.980,52 BPT.
-
-**Por qué es vulnerable.**
-
-| pata | valor | peso | ρ |
-|---|---:|---:|---:|
-| MIMO | $6.035,31 | 25 % | **2,665** |
-| PAR | $3.024,10 | 75 % | **0,445** |
-
-La pata en polvo es **PAR a pesar de tener el 75 % del peso**: MIMO vale el doble con la cuarta parte
-del peso. Es el mismo desequilibrio del #2 con los pesos cambiados, y sigue siendo explotable porque
-lo que manda es `v_i` contra `w_i`, no el peso solo.
-
-**Cómo se explota.** 2 joins de fracción **0,2** del supply (muy por debajo del tope de 2) + 2 exits
-de ≤30 %. Capital $1.894,22 → cobrado $4.626,64. P&L **+$2.732**.
-
-**Por qué el contrato lo permite.** Aquí se ve por qué el hardening de v2 no sirve: `_MAX_INVARIANT_RATIO
-= 3e18` permite acuñar hasta el 200 % del supply por llamada y el atacante usa el **20 %**. El tope
-está holgadísimo y, sobre todo, mide la magnitud equivocada (supply, no desequilibrio).
-
----
-
-### 2.4 `0x30cb859317e171832b064c97cc03ccb081954d1b` — desequilibrio puro
-
-**Qué es.** BPool **UNI-V2/WETH 50/50**, fee **3,75 %** (alta), TVL $3.883,45, supply **0,03733535 BPT**.
-
-**Por qué es vulnerable.**
-
-| pata | valor | peso | ρ |
-|---|---:|---:|---:|
-| UNI-V2 | $3.799,90 | 50 % | **1,957** |
-| WETH | $83,55 | 50 % | **0,043** |
-
-WETH aporta el **2,15 %** del valor con el **50 %** del peso. El ρ más bajo de los siete.
-
-**Cómo se explota.** 9 joins metiendo WETH (el primero, 0,0197 WETH), f = 83,41 %, capital $3.128,36 →
-$5.848,57. P&L **+$2.720**. Hacen falta 9 llamadas (no 2) por el fee del 3,75 %, que encarece cada paso.
-
-**Un detalle que engaña.** El supply de 0,037 BPT parece la causa y no lo es: el ataque es
-**invariante al supply** (comprobado: multiplicarlo por 1, 10, 100 o 1.000 da el mismo P&L al dólar).
-Lo que importa es `b_polvo/b_grande`, `w` y la fee. El supply minúsculo es un **síntoma** de que el
-pool estuvo vaciado, no el mecanismo.
-
----
-
-### 2.5 `0xc351648240e9fc9213e8b6016e566f95c5fa7909` — peso extremo 20/80
+### 2.2 `0xc351648240e9fc9213e8b6016e566f95c5fa7909` — peso extremo 20/80
 
 **Qué es.** BPool **WETH 20 % / REPv2 80 %**, fee 0,30 %, TVL $10.055,75, supply 100 BPT.
 
@@ -234,32 +221,15 @@ salida pro-rata: $2.490,43. P&L **+$993**.
 peso es bajo. Cuanto más extremo el peso, menos hay que mover el precio para desequilibrar el pool —
 y este pool ya venía desequilibrado.
 
-> Este es el pool que el PoC usaba como **control negativo**. No lo es: ρ = 0,313 y da +$993.
+> ⚠️ **Lo que falta por verificar.** En el anexo de la auditoría previa este pool aparece como «control
+> negativo» con −0,0017 WETH. Ese test **no vale**: entra y sale por la **misma** pata (WETH), y eso es
+> un wash por construcción — `2 × fee × 0,28 WETH = 0,00168`, exactamente lo medido. La salida rentable
+> es **REPv2** (ρ = 1,172) o **pro-rata**, que aquí sí funciona porque ninguna pata está muerta. Hay que
+> probar esa dirección antes de dar el pool por bueno o por muerto.
 
 ---
 
-### 2.6 `0xa5533a44d06800eaf2daad5aad3f9aa9e1dc3614` — PAR/MIMO 20/80 (v2)
-
-**Qué es.** **WeightedPool v2** (factoría v1, `codesize` 18.286), **PAR 20 % / MIMO 80 %**, fee 0,15 %,
-TVL $4.507,03, supply 486.769,84 BPT.
-
-**Por qué es vulnerable.**
-
-| pata | valor | peso | ρ |
-|---|---:|---:|---:|
-| MIMO | $4.327,01 | 80 % | 1,200 |
-| PAR | $180,02 | 20 % | **0,200** |
-
-**Cómo se explota.** 3 joins de fracción 0,1 + 1 exit. Capital $573 → cobrado $1.299,95.
-P&L **+$727**, ROI 1,27×.
-
-**Por qué el contrato lo permite.** Igual que #3. Y el patrón se repite: **tres de los siete pools son
-el par PAR/MIMO** (#2, #3, #6), en v1 y en v2, con pesos 50/50, 75/25 y 20/80. Es el mismo fallo de
-arbitraje que nadie cerró en ninguno de los tres.
-
----
-
-### 2.7 `0xcf8dfdb73e7434b05903b5599fb96174555f4353` — el más rentable por dólar
+### 2.3 `0xcf8dfdb73e7434b05903b5599fb96174555f4353` — el mejor ROI y sin inventario
 
 **Qué es.** **WeightedPool v2** (factoría v4, `codesize` 24.252), **st-yETH 40 % / GOLD 60 %**,
 fee 1 %, TVL $1.235,45, supply 114,93 BPT.
@@ -275,44 +245,62 @@ GOLD tiene el 60 % del peso y aporta el **9,6 %** del valor.
 
 **Cómo se explota.** Un solo join de fracción 1 (acuñar el 100 % del supply, dentro del tope de 2) y
 2 exits: capital **$258,76** → cobrado **$916,22**. P&L **+$657**, ROI **2,54×**. Es el mejor ROI de
-los siete después del #1.
+los tres.
 
-**Por qué es especialmente peligroso.** A diferencia de los tokens muertos, **GOLD se puede comprar**
-($1,0037, con precio de mercado). El atacante no necesita tener el token de antemano: compra $259 de
-GOLD, entra, sale con st-yETH y vende. Es un ataque sin inventario.
+**Por qué es el único que no depende de una marca dudosa.** **GOLD se puede comprar** ($1,0037, con
+precio de mercado) y st-yETH es un derivado de ETH con par profundo: las dos patas tienen salida, que
+es justo lo que faltaba en los descartados. El atacante no necesita tener el token de antemano: compra
+$259 de GOLD, entra, sale con st-yETH y vende.
+
+> ⚠️ **Lo que falta por verificar.** Los dos precios. Si st-yETH vale como ETH (~$2.123) en vez de
+> $55,42, la pata pasa de $1.117 a ~$42.780 y ρ_GOLD cae a **0,005**: el pool sería **mucho más**
+> vulnerable y el botín mayor. Si el que está mal es GOLD, el pool se equilibra y el ataque muere. Es
+> un pool de $1,2k: se comprueba en un fork en diez minutos, y es el orden correcto de trabajo.
 
 ---
 
-## 3. Cuatro causas, no siete bugs
+## 3. Tres causas, no tres bugs
 
-Los siete son el **mismo bug** en cuatro estados distintos del pool:
+Los tres son el **mismo bug** en tres estados distintos del pool:
 
 | causa | pools | qué lo produce |
 |---|---|---|
 | **Patas muertas** | #1 | El pool sobrevivió a sus tokens: siete patas a ~0 y una que concentra todo. ρ ≈ 0 ⇒ entrar cuesta céntimos. |
-| **Par desarbitrado** | #2, #3, #6 | Un token con precio administrado (PAR) y otro de incentivos (MIMO). El valor relativo se movió 6:1 y nadie vendió MIMO contra el pool. |
-| **Desequilibrio puro** | #4, #7 | Un token se apreció (o el otro se hundió) y el pool quedó con una pata al 2–10 % de su peso en valor. |
-| **Peso extremo** | #5 | Con w = 0,2 basta un desequilibrio moderado para que el BPT salga barato. |
+| **Peso extremo** | #2 | Con w = 0,2 basta un desequilibrio moderado para que el BPT salga barato. |
+| **Desequilibrio puro** | #3 | Un token se hundió frente al otro y el pool quedó con una pata al 9,6 % de su peso en valor. |
 
-Los cuatro son la misma condición aritmética: **`min_i ρ_i < ρ*`**. En v1, `ρ*` ∈ [0,845; 0,979] según
-el peso (lo imponía `MAX_IN_RATIO`). En v2, `ρ* = 1`.
+Las tres son la misma condición aritmética: **`min_i ρ_i < ρ*`**, con ρ medido a **precio realizable**.
+En v1, `ρ*` ∈ [0,845; 0,979] según el peso (lo imponía `MAX_IN_RATIO`). En v2, `ρ* = 1`.
+
+La cuarta causa del documento anterior —*par desarbitrado* (#2, #3 y #6 de los antiguos)— **no era una
+causa**: era MIMO marcado a spot (§0bis).
 
 ## 4. Cómo se detecta
 
 ```bash
-python3 security/dossier7.py      # rho por pata + traza del ataque, pool a pool
+python3 security/dossier7.py      # rho por pata + traza del ataque, pool a pool (los 7 originales)
 python3 security/verify_triage.py # veredicto de las 226 filas del escáner
 ```
 
-El criterio, sin simulador: **`ρ_i = v_i/(w_i·TVL)`**. Si alguna pata baja de su umbral, el pool es
-atacable. La simulación sólo hace falta para cuantificar el botín y el número de llamadas.
+El criterio **no** es `ρ` con el precio del escáner. Es:
+
+1. **marca realizable**: para cada pata, el precio al que se puede vender *el importe que habría que
+   vender* contra su mejor par (curva de venta, no spot);
+2. recalcular `ρ_i = v_i/(w_i·TVL)` con esas marcas;
+3. exigir que el precio marginal del pool difiera del realizable **después** de slippage.
+
+Un pool con ρ = 0,2 medido a spot puede estar perfectamente equilibrado a precio realizable — y
+entonces no hay nada que cobrar, por muy «desequilibrado» que parezca. Es el filtro que falta en el
+escáner y el que hay que meter antes de volver a listar candidatos.
+
+La simulación sólo hace falta para cuantificar el botín y el número de llamadas.
 
 ## 5. Cómo se cierra
 
 1. **Mínimo de balance por token en valor** (no en wei): rechazar el join/exit no proporcional si deja
    una pata por debajo de `ε·TVL`. Es lo que v1 rechazó en `Audit.md` #210 (`min_token_balance`,
-   WONT FIX) y lo que aplica `security/patches/balancer-v1-hardening.patch` (P1). Con eso, #1, #4, #7
-   quedan cerrados y #2/#3/#6 necesitan un ε más agresivo.
+   WONT FIX) y lo que aplica `security/patches/balancer-v1-hardening.patch` (P1). Con eso, #1 y #3
+   quedan cerrados y #2 necesita un ε más agresivo.
 2. **Acotar ρ, no el supply.** En v2, sustituir `_MAX_INVARIANT_RATIO` por un límite sobre el
    desequilibrio resultante.
 3. **Oráculo para operaciones no proporcionales.** Es lo único que ataca la causa raíz: comparar el
@@ -321,10 +309,11 @@ atacable. La simulación sólo hace falta para cuantificar el botín y el númer
 
 ## 6. Límites
 
-- Cálculo estático + simulación determinista; nada ejecutado contra un nodo.
-- Los precios son los de la lista del escáner (`usd_per_token`). La **fracción** drenada no depende del
-  precio; el importe en dólares, sí.
-- El botín asume que el atacante puede adquirir la pata en polvo. En #1–#6 son tokens con mercado o
-  ya en cartera; el #7 lo demuestra con un token comprable. Si la pata en polvo no se pudiera
-  comprar, el ataque requeriría ser tenedor previo.
-- El ROI de #2, #4 y #5 es < 1: hace falta capital (que se recupera) y el beneficio es el P&L neto.
+- Cálculo estático + simulación determinista; **nada de esto está confirmado ejecutando contra un nodo**.
+- Los precios son los de la lista del escáner (`usd_per_token`). **La fracción drenada no depende del
+  precio; el importe en dólares sí** — y es exactamente donde fallaron los cuatro descartados. Tratar
+  la columna de botín como **cota superior a precio de marca**, no como botín.
+- El botín asume que el atacante puede adquirir la pata en polvo **y vender la pata premio**. Lo
+  segundo es lo que no está verificado en #1 y lo que hace que #3 sea el más sólido de los tres.
+- El ROI de #2 es < 1: hace falta capital (que se recupera) y el beneficio es el P&L neto.
+- El nombre del fichero («…-7») es histórico; se mantiene para no romper los enlaces del índice.
