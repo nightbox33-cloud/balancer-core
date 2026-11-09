@@ -108,7 +108,62 @@ En **9 de los 14** la reserva que se deposita vale **menos de $100**; en 7 es li
 
 ---
 
-## 4. Tabla B — los 40 pools con tokens sin precio
+## 4. ¿Cuánto tiene que comprar exactamente?
+
+Dos preguntas distintas que la columna «capital» de la tabla A mezclaba. Aquí van separadas.
+
+### 4.1 El mínimo: una sola llamada, sin flash loan
+
+| pool | token a comprar | unidades (1 llamada) | coste | BPT obtenido | botín |
+|---|---|---:|---:|---:|---:|
+| `0x9a16bddf0e89541d6abea035b706968465241e4f` | USDC | 8,19 | $8,19 | 7,7% | $12.770 |
+| `0x3c71fad2a1fc9ea1c5f7b87491daae7f1669d21a` | WETH | 1,94 | $4.109,57 | 18,3% | $25.792 |
+| `0x1373e57f764a7944bdd7a4bd5ca3007d496934da` | USDC | 0,000903 | $0,00 | 4,9% | $9.624 |
+| `0xe9a2c7a19e47bac855fad9c3147ffe95aea8c4c4` | BAL | 0,267 | $0,03 | 18,3% | $9.141 |
+| `0xf1f3d252be946ee079f02cf577372bdada307457` | WBTC | 1e-08 | $0,00 | 3,0% | $7.865 |
+| `0xaaa117d04aaf533701c9e40cd52113706d95d420` | REN | 9,02 | $0,02 | 18,3% | $4.329 |
+| `0xf0f8b1ce9d95dfbe82f8310d48dcae71d79f9519` | PAR | 1,12e+03 | $1.244,06 | 18,3% | $3.732 |
+| `0x30cb859317e171832b064c97cc03ccb081954d1b` | WETH | 0,0197 | $41,77 | 18,1% | $1.185 |
+| `0xc351648240e9fc9213e8b6016e566f95c5fa7909` | WETH | 0,148 | $315,15 | 7,8% | $591 |
+| `0xba46868f49182b521b71bf9894d24da7e969e286` | DAI | 85,3 | $85,27 | 18,3% | $162 |
+
+Con **8,19 USDC** (ocho dólares) se obtiene el 7,7% de `0x9a16bddf` y se sale con **$12.770**. Una transacción, sin capital prestado, sin bucle. En `0xe9a2c7a1` basta **0,27 BAL** (tres céntimos) para sacar $9.141. Este es el suelo: lo que cuesta entrar por primera vez es exactamente **la mitad de la reserva que hay en el pool hoy** (`MAX_IN_RATIO` = 0,5), y esas reservas son de céntimos.
+
+La salida de esta tabla es mono-token en los pools desequilibrados: quemar el BPT y sacar **un solo** activo da más que el pro-rata, porque el pool te lo vende al precio interno torcido.
+
+### 4.2 El óptimo: bucle de compresión
+
+| pool | token a comprar | unidades totales | valor | 1er depósito | reserva en el pool hoy | n | botín |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `0x9a16bddf0e89541d6abea035b706968465241e4f` | USDC | 3,631e+04 | $36.303 | $8,19 | 16,4 | 19 | $97.639 |
+| `0x3c71fad2a1fc9ea1c5f7b87491daae7f1669d21a` | WETH | 40,22 | $85.402 | $4.109,57 | 3,87 | 6 | $43.682 |
+| `0x1373e57f764a7944bdd7a4bd5ca3007d496934da` | USDC | 9,006 | $9 | $0,00 | 0,00181 | 21 | $29.026 |
+| `0xe9a2c7a19e47bac855fad9c3147ffe95aea8c4c4` | BAL | 2,301e+05 | $26.815 | $0,03 | 0,533 | 32 | $27.376 |
+| `0xf1f3d252be946ee079f02cf577372bdada307457` | WBTC | 1,312e-05 | $1 | $0,00 | 2e-08 | 16 | $17.307 |
+| `0xaaa117d04aaf533701c9e40cd52113706d95d420` | REN | 5,188e+06 | $11.038 | $0,02 | 18 | 31 | $12.958 |
+| `0xf0f8b1ce9d95dfbe82f8310d48dcae71d79f9519` | PAR | 9070 | $10.108 | $1.244,06 | 2,23e+03 | 4 | $5.188 |
+| `0x30cb859317e171832b064c97cc03ccb081954d1b` | WETH | 1,473 | $3.128 | $41,77 | 0,0394 | 9 | $2.720 |
+| `0xc351648240e9fc9213e8b6016e566f95c5fa7909` | WETH | 0,7051 | $1.497 | $315,15 | 0,297 | 3 | $993 |
+| `0xba46868f49182b521b71bf9894d24da7e969e286` | DAI | 692,8 | $693 | $85,27 | 171 | 4 | $200 |
+
+### 4.3 Cómo se lee
+
+- **`unidades` y `valor`**: lo que hay que tener en la mano —o pedir en un flash loan— durante esa transacción. Se multiplica por **1,5 en cada llamada** (cada depósito es el 50% de la reserva, y la reserva pasa a ser 1,5× la anterior), y por eso el total es `reserva × (1,5ⁿ − 1)`: en `0x3c71fad2` son 3,87 WETH en el pool hoy y 40,22 WETH acumulados en 6 llamadas.
+- **No se pierde.** Al salir te llevas el 78% (o el 70%, o el 99%) de *todo*, incluido ese mismo porcentaje de tu propio depósito. Lo que no vuelve es `(1−f)×depósito`, y de ahí sale el P&L. Por eso el «valor» de la columna no es un coste: es un **requisito de caja instantáneo**, que es justo lo que un flash loan resuelve por un 0,05%.
+- **El coste real** es la suma de: fee del flash loan ($18 en el caso de USDC, $43 en el de WETH) + gas (~120.000 por llamada, ~2,5 M para 19 llamadas ≈ $115). Frente a $97.639 y $43.682 de botín.
+- **`n`** sale del óptimo: sube mientras la fracción capturada gana a la parte no recuperable del depósito, y baja cuando el depósito crece más rápido que lo que se lleva.
+
+### 4.4 La letra pequeña que este modelo no puede verificar
+
+El modelo asume que las unidades se compran al precio de la tabla **sin slippage**. En `0xaaa117d0` eso son **5,19 millones de REN**: si no hay esas unidades disponibles, el ataque no falla, simplemente se hace con menos `n` — y el botín baja hacia el de la tabla 4.1, que ya es rentable con 9 REN. **El suelo es 4.1, el techo es 4.2; en medio no hay ningún escenario donde el ataque deje de ser rentable.** La única comprobación que falta es una consulta de liquidez por token.
+
+Además, los tokens con pocos decimales (WBTC 8, USDC 6) tienen un suelo de granularidad: cuando la reserva son 2 unidades mínimas, `bmul(bal, 0,5)` devuelve 1 y el bucle se corta antes de lo que dice el modelo. Afecta a las últimas llamadas, no al resultado.
+
+---
+
+---
+
+## 5. Tabla B — los 40 pools con tokens sin precio
 
 Aquí `ρ` no se puede calcular, así que el escáner valora esos tokens a cero. En vez de adivinar, calculo el **precio de equilibrio `p*`**: el precio del token sin precio por debajo del cual el pool cae por debajo del umbral y pasa a ser vulnerable.
 
@@ -161,7 +216,7 @@ Aquí `ρ` no se puede calcular, así que el escáner valora esos tokens a cero.
 
 ---
 
-## 5. Los 46 «seguros» no son seguros: son seguros *hoy*
+## 6. Los 46 «seguros» no son seguros: son seguros *hoy*
 
 Los 46 pools con `ρ ≥ ρ*` suman **$2.025.291** y hoy no son atacables. Pero `ρ` se mueve con el **precio relativo** entre los tokens del pool (un movimiento de ambos a la vez se cancela; lo que rompe el equilibrio es que uno se mueva más que el otro). Umbral de ruptura:
 
@@ -177,7 +232,7 @@ Un par como MKR/WETH se mueve un 20% relativo en cuestión de semanas. **Estos p
 
 ---
 
-## 6. Flash loans: lo que cambian y lo que no
+## 7. Flash loans: lo que cambian y lo que no
 
 **No son el vector.** Ya está demostrado en `flashloan_grid.py`: desde un pool *equilibrado* el ataque exige ~10⁶ veces las reservas para un botín del 0,1%, porque la pérdida `(1−f)·D` crece igual que la ganancia. El flash loan **no fabrica** el desequilibrio.
 
@@ -201,7 +256,7 @@ Consecuencias concretas:
 
 ---
 
-## 7. Qué haría, en este orden
+## 8. Qué haría, en este orden
 
 1. **Hoy:** los 8 pools de la tabla A con botín > $1.000 (`setPublicSwap(false)` desde el `controller`, o retirar la liquidez). Son $260.000 y no requieren más análisis.
 2. **Esta semana:** medir el precio de los 5 tokens de la tabla B con más TVL (ULU, xAAVEa, COVER_CDS, PCT, MPL) y compararlo con su `p*`. Son $1,02M en juego y es una consulta por token.
@@ -210,7 +265,7 @@ Consecuencias concretas:
 
 ---
 
-## 8. Límites de este análisis
+## 9. Límites de este análisis
 
 - `ρ` usa los precios de un instante; no incorpora profundidad de mercado ni slippage de la venta del botín.
 - El modelo es homogéneo en dólares (invariante a decimales), lo que es exacto para el efecto `ρ` y aproximado para el redondeo de unidades mínimas.
@@ -220,7 +275,7 @@ Consecuencias concretas:
 
 ---
 
-## 9. Reproducir
+## 10. Reproducir
 
 ```bash
 cd security

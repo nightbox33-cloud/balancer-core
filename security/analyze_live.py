@@ -153,7 +153,9 @@ def analyse(path="data/pools_live.csv"):
                    unpriced_names=",".join(t["name"] for t in unpriced),
                    supply=safe_float(r["supply"], 0.0), pnl=0.0, verdict="",
                    n=0, pay=0.0, pay_raw=0, frac=0.0, w=0.0, why="", pstar=None,
-                   dust_name="")
+                   dust_name="", dust_px=0.0, dust_units_pool=0.0,
+                   units=0.0, first=0.0, got=0.0,
+                   one_pnl=0.0, one_paid=0.0, one_frac=0.0)
 
         if r["finalized"] != "True":
             rec["verdict"] = "NO APLICA"
@@ -189,6 +191,18 @@ def analyse(path="data/pools_live.csv"):
         fee = int((safe_float(r["swap_fee"], 0.003) or 0.003) * BONE)
         res = attack(mt, fee) if (cand or unpriced) else None
         if res:
+            one = attack(mt, fee, max_calls=1)
+            if one:
+                rec["one_pnl"] = one["pnl"]
+                rec["one_paid"] = one["paid"]
+                rec["one_frac"] = one["frac"]
+        if res:
+            _d = next((t for t in tokens if t["name"] == res["dust"]), None)
+            if _d and _d["px"]:
+                rec["dust_px"] = _d["px"]
+                rec["dust_units_pool"] = _d["bal"]
+                rec["units"] = res["paid"] / _d["px"]
+                rec["first"] = 0.5 * _d["bal"] * _d["px"]
             rec.update(n=res["n"], frac=res["frac"], pay=res["paid"],
                        pay_raw=res["paid_raw"], dust_name=res["dust"],
                        pnl=res["pnl"], w=res["w"], dust=res["dust"],
@@ -246,6 +260,59 @@ def emit(out, md=False):
     print(f"  {'TOTAL':<14} ${sum(tot.values()):>13,.0f}")
 
 
+def emit_capital(out):
+    """Cuanto tiene que comprar el atacante, en unidades del token, en dos regimenes."""
+    V = [x for x in sorted(out, key=lambda x: -x["pnl"])
+         if x["verdict"] == "VULNERABLE" and x["pnl"] > 1 and x.get("units")]
+    h1 = (f"{'pool':<12}{'comprar':<8}{'unidades':>15}{'valor $':>12}"
+          f"{'BPT':>11}{'botin':>11}")
+    print("A) ATAQUE MINIMO -- una sola llamada, sin flash loan\n" + h1)
+    print("-" * len(h1))
+    for x in V:
+        print(f"{x['pool'][:10]:<12}{x['dust_name'][:7]:<8}"
+              f"{x['dust_units_pool']*0.5:>15,.4g}"
+              f"{x['one_paid']:>12,.2f}{x['one_frac']*100:>10.1f}%{x['one_pnl']:>11,.0f}")
+    print(f"{'':<12}{'(deposito = 50% de la reserva que hay en el pool)':>63}")
+    print("(salida mono-token: en un pool desequilibrado sacar UN token da mas que el pro-rata)")
+
+    h2 = (f"\n{'pool':<12}{'comprar':<8}{'unidades':>15}{'valor $':>12}"
+          f"{'1er deposito':>14}{'reserva hoy':>13}{'n':>4}{'entra':>10}{'neto':>11}")
+    print("\nB) ATAQUE OPTIMO -- bucle de compresion (importe recuperado en la misma tx)\n" + h2)
+    print("-" * len(h2))
+    tp = tv = 0.0
+    for x in V:
+        tp += x["pnl"]; tv += x["pay"]
+        print(f"{x['pool'][:10]:<12}{x['dust_name'][:7]:<8}{x['units']:>15,.4g}"
+              f"{x['pay']:>12,.0f}{x['first']:>14,.2f}{x['dust_units_pool']:>13,.4g}"
+              f"{x['n']:>4}{x['got']:>10,.0f}{x['pnl']:>11,.0f}")
+    print("-" * len(h2))
+    print(f"{'TOTAL':<12}{'':<8}{'':>15}{tv:>12,.0f}{'':>14}{'':>13}{'':>4}"
+          f"{'':>10}{tp:>11,.0f}")
+    print("\n'unidades' = cuanto token hay que tener (o pedir prestado) en total.")
+    print("'valor $'  = a cuanto asciende; se recupera al salir, no se pierde.")
+    print("'reserva hoy' = unidades en el pool: es lo que hace falta multiplicar por 1,5^n.")
+    print("Coste real = fee del flash loan (0,05%) + gas (~120k por llamada).")
+
+
+def emit_capital_md(out):
+    V = [x for x in sorted(out, key=lambda x: -x["pnl"])
+         if x["verdict"] == "VULNERABLE" and x["pnl"] > 1 and x.get("units")]
+    A = ["| pool | token a comprar | unidades (1 llamada) | coste | BPT obtenido | botin |",
+         "|---|---|---:|---:|---:|---:|"]
+    for x in V:
+        A.append("| `%s` | %s | %s | $%s | %s%% | $%s |" % (
+            x["pool"], x["dust_name"], _es(x["dust_units_pool"] * 0.5, ".3g"),
+            _es(x["one_paid"], ",.2f"), _es(x["one_frac"] * 100, ".1f"), _es(x["one_pnl"])))
+    B = ["| pool | token a comprar | unidades totales | valor | 1er deposito | reserva en el pool hoy | n | botin |",
+         "|---|---|---:|---:|---:|---:|---:|---:|"]
+    for x in V:
+        B.append("| `%s` | %s | %s | $%s | $%s | %s | %d | $%s |" % (
+            x["pool"], x["dust_name"], _es(x["units"], ".4g"),
+            _es(x["pay"]), _es(x["first"], ",.2f"),
+            _es(x["dust_units_pool"], ".3g"), x["n"], _es(x["pnl"])))
+    return "\n".join(A) + "\n\n" + "\n".join(B)
+
+
 def _es(v, fmt=", .0f".replace(" ", "")):
     """numero -> cadena con separadores espanoles (135,358 -> 135.358)"""
     t = format(v, fmt)
@@ -287,5 +354,9 @@ if __name__ == "__main__":
     res = analyse(path)
     if "--md" in sys.argv:
         print(emit_md(res))
+    elif "--capital-md" in sys.argv:
+        print(emit_capital_md(res))
+    elif "--capital" in sys.argv:
+        emit_capital(res)
     else:
         emit(res)
