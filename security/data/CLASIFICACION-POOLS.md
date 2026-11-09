@@ -254,6 +254,33 @@ Consecuencias concretas:
 
 **El coste que sí domina es el gas.** El tope `MAX_IN_RATIO` obliga a `n` llamadas separadas (~120k gas cada una) más la salida: ~20 llamadas ≈ 2,5M gas ≈ **$115** a 20 gwei y ETH $2.123. Por eso, en la práctica, **nada por debajo de ~$1.000 de botín interesa**, lo que reduce la lista de 14 a **8 pools con beneficio neto claro**. Los 6 restantes son vulnerables y explotables, pero el gas se come el botín.
 
+### 7.1 ¿Y para *abrir* un pool que hoy está por encima del umbral?
+
+La pregunta obvia: si el flash loan no ayuda desde un pool equilibrado, ¿ayuda para **crear** el desequilibrio? Lo he modelado (`open_balanced.py`) con las tres maniobras posibles, todas financiables y reversibles en la misma transacción, sobre pools de 200.000 $ de referencia:
+
+- **swap**: vender B contra el pool para dejar A famélico, y depositar el A que se ha sacado.
+- **donate + gulp**: transferir B directamente al pool (invisible para el AMM) y llamar `gulp()` — público, sin permisos — para que el AMM lo contabilice.
+- **nada**: control.
+
+Barrido de 8 tamaños de empuje × 10 valores de `n` × 5 tipos de pool (w = 20/30/50/80 %, ρ=1 y ρ al borde del umbral). **El mejor resultado de las 800 combinaciones es una pérdida**, y su tamaño es exactamente el fee del viaje de ida y vuelta:
+
+| escenario | maniobra | mejor neto |
+|---|---|---:|
+| 50/50 equilibrado | swap 2 % / 10 % / 35 % | −12 / −56 / −169 |
+| 50/50 equilibrado | donate 2 % / 35 % | −2.125 / −32.760 |
+| `0x74a5d106` (ρ=0,9421, umbral 0,862) | swap 2 % / 10 % / 35 % | −17 / −78 / −233 |
+| `0x74a5d106` | donate 2 % / 35 % | −2.968 / −46.636 |
+| `0x5a0d8516` (ρ=0,9983, umbral 0,899) | swap 2 % / 10 % / 35 % | −12 / −56 / −169 |
+
+El óptimo es siempre `n = 1` y una pérdida igual a ~2 fees. La razón:
+
+1. **`ρ*` es el punto de beneficio cero por construcción.** Cualquier maniobra que cueste algo para llevar ρ desde arriba del umbral hasta justo debajo arranca exactamente en cero y **resta** su coste. Para ganar hay que pasarse, y pasarse cuesta de forma convexa (slippage) mientras la ganancia crece lineal.
+2. **Depositar *repara* el desequilibrio**: `ρ' = 1,5ρ/(1 + 0,5ρ) ≥ ρ`. Desde un pool equilibrado, el bucle se acuña a precio justo o peor — no se puede arrancar.
+3. **La donación es pérdida pura**: solo recuperas `f` de ella, y `f → 1` exige precisamente el desequilibrio que intentabas crear.
+4. **El mecanismo no lee ningún precio.** `calcSingleInGivenPoolOut` usa balances, pesos y supply: **ρ es una valoración del pool, no una entrada del contrato**. Los precios manipulables cambian lo que *vale* el botín, nunca lo que el contrato te cobra. Y manipular el precio del token que depositas es autocancelable: para comprarlo barato hay que haberlo vendido antes.
+
+Corolario: los 46 «seguros» **no se pueden abrir**. Lo que sí los abre es un movimiento de precio **real** del 13–22 % relativo (§6) — pero eso no es una técnica del atacante, es el mercado, y se resuelve con monitorización, no con un parche.
+
 ---
 
 ## 8. Qué haría, en este orden

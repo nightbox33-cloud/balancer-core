@@ -15,6 +15,7 @@ Artefactos del análisis de seguridad del commit `f4ed5d6` (master).
 | **`TRIAGE-POOLS-ES.md`** | **Triaje del inventario de pools**: qué se descarta, en qué orden revisar el resto y por qué el TVL / el flash loan no son buenos criterios. |
 | `triage.py` | `inventory` (clasifica el CSV del escáner) y `screen` (veredicto real por pool a partir de balance/decimals/denorm/precio por token). |
 | `screen.py` | Curva de rentabilidad `rho → P&L` y umbrales `rho*` por peso (aritmética exacta). |
+| `open_balanced.py` | ¿Se puede **abrir** un pool que hoy está por encima del umbral? Barrido de 800 combinaciones (swap / donate+gulp / nada × empuje × n × pesos): todas negativas. ρ* es el punto de beneficio cero por construcción. |
 | `flashloan_grid.py` | Busca si el ataque con flash loan (comprimir→diluir→exit) es viable desde un pool equilibrado. |
 | `data/pools.tsv` | Inventario de 113 pools aportado por el usuario (anonimizado a los campos usados). |
 | `patches/balancer-v1-hardening.patch` | Parche propuesto (P1 contención / P2 causa raíz / P3 robustez). Se aplica limpio con `git apply`. **No compilado en este entorno** (sin `node_modules`): validar con `solc 0.5.12` + `truffle test` antes de desplegar. |
