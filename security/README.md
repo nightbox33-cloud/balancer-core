@@ -9,6 +9,11 @@ Artefactos del análisis de seguridad del commit `f4ed5d6` (master).
 | `experiments.py` | E1-E7: reproducción del bug principal, la variante `joinswapExternAmountIn`, el caso de 18 decimales, la economía end-to-end, los DoS (`exitPool`, `gulp→0`) y el blow-up de `bpow`. |
 | `rounding_search.py` | S1-S4: búsqueda exhaustiva de ciclos rentables por redondeo (join/exit, swap ida-vuelta, join-swap/exit-swap) a escala normal y con reservas en polvo. |
 | `economics.py` | Capital / botín / ROI del ataque completo sobre pools balanceados a precio de mercado, en función del factor de compresión. |
+| **`TRIAGE-POOLS-ES.md`** | **Triaje del inventario de pools**: qué se descarta, en qué orden revisar el resto y por qué el TVL / el flash loan no son buenos criterios. |
+| `triage.py` | `inventory` (clasifica el CSV del escáner) y `screen` (veredicto real por pool a partir de balance/decimals/denorm/precio por token). |
+| `screen.py` | Curva de rentabilidad `rho → P&L` y umbrales `rho*` por peso (aritmética exacta). |
+| `flashloan_grid.py` | Busca si el ataque con flash loan (comprimir→diluir→exit) es viable desde un pool equilibrado. |
+| `data/pools.tsv` | Inventario de 113 pools aportado por el usuario (anonimizado a los campos usados). |
 | `patches/balancer-v1-hardening.patch` | Parche propuesto (P1 contención / P2 causa raíz / P3 robustez). Se aplica limpio con `git apply`. **No compilado en este entorno** (sin `node_modules`): validar con `solc 0.5.12` + `truffle test` antes de desplegar. |
 
 ## Reproducir
@@ -16,9 +21,12 @@ Artefactos del análisis de seguridad del commit `f4ed5d6` (master).
 No requiere dependencias (sólo Python 3):
 
 ```bash
-python3 security/experiments.py
-python3 security/rounding_search.py
-python3 security/economics.py
+python3 security/experiments.py          # E1-E7
+python3 security/rounding_search.py      # S1-S4
+python3 security/economics.py            # capital/botin/ROI
+python3 security/screen.py               # rho* y curva de profit
+python3 security/flashloan_grid.py       # viabilidad del flash loan
+python3 security/triage.py inventory security/data/pools.tsv
 ```
 
 Aplicar el parche en una rama de trabajo:
