@@ -88,6 +88,9 @@ El umbral dice cuánto puede valer la pata sin precio antes de que el pool deje 
 | `0xa7956005` | v1 | $24.152 | $46.123 | $24.045 |
 | `0xc786ab47` | v1 | $22.356 | $18.251 | $21.952 |
 | … 51 más | | $133.439 | | $126.587 |
+
+**Lista completa de los 61 (y los 4 indecidibles): `data/CONDICIONALES-61.md`** — generada con
+`python3 security/condicionales.py`; incluye el umbral por unidad cuando se conoce el símbolo.
 | **total** | | **$1.460.055** | | **$974.855** |
 
 Sin el precio del token no puedo decir «es vulnerable»: digo exactamente cuánto tiene que valer para
