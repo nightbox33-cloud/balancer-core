@@ -15,6 +15,8 @@ Artefactos del análisis de seguridad del commit `f4ed5d6` (master).
 | **`TRIAGE-POOLS-ES.md`** | **Triaje del inventario de pools**: qué se descarta, en qué orden revisar el resto y por qué el TVL / el flash loan no son buenos criterios. |
 | `triage.py` | `inventory` (clasifica el CSV del escáner) y `screen` (veredicto real por pool a partir de balance/decimals/denorm/precio por token). |
 | `screen.py` | Curva de rentabilidad `rho → P&L` y umbrales `rho*` por peso (aritmética exacta). |
+| **`data/VERIFICACION-TRIAGE-ES.md`** | **Veredicto de las 226 filas del escáner**: 7 pools vulnerables hoy ($42.250 de botín), 61 condicionalmente vulnerables según el valor de la pata sin precio ($974.855) y **54 etiquetados `STILL-EXPOSED` que en realidad dan P&L negativo**. Reproduce exactamente el `p*` de la tabla B por un camino independiente. |
+| `verify_triage.py` | Verifica la columna `risk` con aritmética exacta. Simula el ataque completo en dólares (todas las operaciones del exploit son lineales en el balance de la pata en polvo), con `bmath_sim` para v1 y `v2_weighted` para v2. Datos: `data/triage_v1.csv`, `data/triage_v2.csv`. |
 | **`data/V2-HALLAZGO-ES.md`** | **¿Sobrevive el fallo en Balancer V2?** Sí, y con menos capital: `JoinKind.TOKEN_IN_FOR_EXACT_BPT_OUT` es el hermano de `joinswapPoolAmountOut`. Mismo estado ⇒ +$97.927 con $7.546 en 7 llamadas (V1: +$97.639 con $36.303 en 20). En V2 el umbral ρ\* desaparece (todo ρ<1 es rentable). |
 | `v2_weighted.py` | Réplica de la aritmética de `WeightedMath._calcTokenInGivenExactBptOut` / `_calcTokenOutGivenExactBptIn` (V2) con los topes `3e18` / `0,7e18`, barrido fracción × nº de llamadas y control en ρ=1. |
 | `open_balanced.py` | ¿Se puede **abrir** un pool que hoy está por encima del umbral? Barrido de 800 combinaciones (swap / donate+gulp / nada × empuje × n × pesos): todas negativas. ρ* es el punto de beneficio cero por construcción. |
@@ -36,6 +38,7 @@ python3 security/triage.py inventory security/data/pools.tsv
 python3 security/analyze_live.py          # veredicto de los 100 pools con datos reales
 python3 security/analyze_live.py --capital # cuanto tiene que comprar el atacante, por pool
 python3 security/v2_weighted.py          # el mismo ataque sobre la aritmetica de Balancer V2
+python3 security/verify_triage.py        # veredicto real de los pools del escaner
 ```
 
 Aplicar el parche en una rama de trabajo:
